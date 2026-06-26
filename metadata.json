@@ -1,0 +1,6 @@
+{
+  "name": "MRB-TV",
+  "description": "High-fidelity stream TV application for browsing and streaming IPTV channels from M3U playlists, featuring favorites, download manager, custom video controls with theater mode, ambient lighting, offline playback, and social feed.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
