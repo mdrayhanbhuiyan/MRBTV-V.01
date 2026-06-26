@@ -42,6 +42,7 @@ fun StreamsScreen(
     modifier: Modifier = Modifier
 ) {
     val searchQuery by viewModel.searchQuery.collectAsState()
+    val isVoiceSearching by viewModel.isVoiceSearching.collectAsState()
     val selectedGroup by viewModel.selectedGroup.collectAsState()
     val filteredChannels by viewModel.filteredChannels.collectAsState()
     val groups by viewModel.groups.collectAsState()
@@ -49,7 +50,16 @@ fun StreamsScreen(
     val currentChannel by viewModel.currentChannel.collectAsState()
     val isFullScreen by viewModel.isFullScreen.collectAsState()
 
-    val chunkedChannels = remember(filteredChannels) { filteredChannels.chunked(2) }
+    val configuration = androidx.compose.ui.platform.LocalConfiguration.current
+    val screenWidthDp = configuration.screenWidthDp
+    val columnsCount = remember(screenWidthDp) {
+        when {
+            screenWidthDp >= 900 -> 4 // TV/Large Landscape Tablet
+            screenWidthDp >= 600 -> 3 // Tablet
+            else -> 2 // Mobile
+        }
+    }
+    val chunkedChannels = remember(filteredChannels, columnsCount) { filteredChannels.chunked(columnsCount) }
 
     // Scroll state observation to enable floating PIP popup player on scroll
     val listState = rememberLazyListState()
@@ -130,9 +140,14 @@ fun StreamsScreen(
                                 placeholder = { Text(viewModel.getLocalizedString("search_placeholder"), color = Color.Gray) },
                                 leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, tint = Color.Gray) },
                                 trailingIcon = {
-                                    if (searchQuery.isNotEmpty()) {
-                                        IconButton(onClick = { viewModel.updateSearchQuery("") }) {
-                                            Icon(Icons.Default.Clear, contentDescription = "Clear Search", tint = Color.Gray)
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        IconButton(onClick = { viewModel.setVoiceSearching(true) }) {
+                                            Icon(Icons.Default.Mic, contentDescription = "Voice Search", tint = Color(0xFF00E676))
+                                        }
+                                        if (searchQuery.isNotEmpty()) {
+                                            IconButton(onClick = { viewModel.updateSearchQuery("") }) {
+                                                Icon(Icons.Default.Clear, contentDescription = "Clear Search", tint = Color.Gray)
+                                            }
                                         }
                                     }
                                 },
@@ -252,43 +267,28 @@ fun StreamsScreen(
                                     .padding(horizontal = 14.dp, vertical = 6.dp),
                                 horizontalArrangement = Arrangement.spacedBy(10.dp)
                             ) {
-                                val channel1 = pair[0]
-                                Box(modifier = Modifier.weight(1f)) {
-                                    ChannelGridCard(
-                                        channel = channel1,
-                                        isPlaying = currentChannel?.url == channel1.url,
-                                        viewModel = viewModel,
-                                        onSelect = { viewModel.selectChannel(channel1) },
-                                        onToggleFavorite = { viewModel.toggleFavorite(channel1) },
-                                        onDownload = {
-                                            if (channel1.isDownloaded) {
-                                                viewModel.deleteDownload(channel1)
-                                            } else {
-                                                viewModel.startDownload(channel1)
-                                            }
-                                        }
-                                    )
-                                }
-                                if (pair.size > 1) {
-                                    val channel2 = pair[1]
-                                    Box(modifier = Modifier.weight(1f)) {
-                                        ChannelGridCard(
-                                            channel = channel2,
-                                            isPlaying = currentChannel?.url == channel2.url,
-                                            viewModel = viewModel,
-                                            onSelect = { viewModel.selectChannel(channel2) },
-                                            onToggleFavorite = { viewModel.toggleFavorite(channel2) },
-                                            onDownload = {
-                                                if (channel2.isDownloaded) {
-                                                    viewModel.deleteDownload(channel2)
-                                                } else {
-                                                    viewModel.startDownload(channel2)
+                                for (i in 0 until columnsCount) {
+                                    if (i < pair.size) {
+                                        val channel = pair[i]
+                                        Box(modifier = Modifier.weight(1f)) {
+                                            ChannelGridCard(
+                                                channel = channel,
+                                                isPlaying = currentChannel?.url == channel.url,
+                                                viewModel = viewModel,
+                                                onSelect = { viewModel.selectChannel(channel) },
+                                                onToggleFavorite = { viewModel.toggleFavorite(channel) },
+                                                onDownload = {
+                                                    if (channel.isDownloaded) {
+                                                        viewModel.deleteDownload(channel)
+                                                    } else {
+                                                        viewModel.startDownload(channel)
+                                                    }
                                                 }
-                                            }
-                                        )
+                                            )
+                                        }
+                                    } else {
+                                        Spacer(modifier = Modifier.weight(1f))
                                     }
-                                } else {
-                                    Spacer(modifier = Modifier.weight(1f))
                                 }
                             }
                         }
@@ -322,7 +322,7 @@ fun StreamsScreen(
                         )
                         // Floating close button overlay
                         IconButton(
-                            onClick = { viewModel.togglePlayPause() },
+                            onClick = { viewModel.stopPlayback() },
                             modifier = Modifier
                                 .align(Alignment.TopEnd)
                                 .padding(8.dp)
@@ -339,6 +339,135 @@ fun StreamsScreen(
                     }
                 }
             }
+
+            // Voice Search Dialog Overlay
+            if (isVoiceSearching) {
+                AlertDialog(
+                    onDismissRequest = { viewModel.setVoiceSearching(false) },
+                    title = {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "Voice Command Search",
+                                style = MaterialTheme.typography.titleLarge,
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White
+                            )
+                            IconButton(onClick = { viewModel.setVoiceSearching(false) }) {
+                                Icon(Icons.Default.Close, contentDescription = "Close Voice Search", tint = Color.White.copy(alpha = 0.5f))
+                            }
+                        }
+                    },
+                    text = {
+                        Column(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Spacer(modifier = Modifier.height(16.dp))
+                            
+                            // Bouncing equalizer voice waves
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.height(48.dp)
+                            ) {
+                                val infiniteTransition = rememberInfiniteTransition()
+                                val scale1 by infiniteTransition.animateFloat(
+                                    initialValue = 0.3f, targetValue = 1.0f,
+                                    animationSpec = infiniteRepeatable(
+                                        animation = tween(400, easing = LinearEasing),
+                                        repeatMode = RepeatMode.Reverse
+                                    )
+                                )
+                                val scale2 by infiniteTransition.animateFloat(
+                                    initialValue = 0.2f, targetValue = 0.8f,
+                                    animationSpec = infiniteRepeatable(
+                                        animation = tween(300, easing = LinearEasing),
+                                        repeatMode = RepeatMode.Reverse
+                                    )
+                                )
+                                val scale3 by infiniteTransition.animateFloat(
+                                    initialValue = 0.4f, targetValue = 0.9f,
+                                    animationSpec = infiniteRepeatable(
+                                        animation = tween(500, easing = LinearEasing),
+                                        repeatMode = RepeatMode.Reverse
+                                    )
+                                )
+                                val scale4 by infiniteTransition.animateFloat(
+                                    initialValue = 0.1f, targetValue = 0.7f,
+                                    animationSpec = infiniteRepeatable(
+                                        animation = tween(350, easing = LinearEasing),
+                                        repeatMode = RepeatMode.Reverse
+                                    )
+                                )
+                                
+                                Box(modifier = Modifier.width(6.dp).fillMaxHeight(scale1).background(Color(0xFF00E676), RoundedCornerShape(100.dp)))
+                                Box(modifier = Modifier.width(6.dp).fillMaxHeight(scale2).background(Color(0xFF00E676), RoundedCornerShape(100.dp)))
+                                Box(modifier = Modifier.width(6.dp).fillMaxHeight(scale3).background(Color(0xFF00E676), RoundedCornerShape(100.dp)))
+                                Box(modifier = Modifier.width(6.dp).fillMaxHeight(scale4).background(Color(0xFF00E676), RoundedCornerShape(100.dp)))
+                                Box(modifier = Modifier.width(6.dp).fillMaxHeight(scale2).background(Color(0xFF00E676), RoundedCornerShape(100.dp)))
+                            }
+
+                            Spacer(modifier = Modifier.height(20.dp))
+                            Text(
+                                text = "Listening to your voice...",
+                                color = Color(0xFF00E676),
+                                fontWeight = FontWeight.SemiBold,
+                                style = MaterialTheme.typography.bodyLarge
+                            )
+                            Text(
+                                text = "Say channel categories, country, or match names",
+                                color = Color.Gray,
+                                style = MaterialTheme.typography.bodyMedium,
+                                modifier = Modifier.padding(top = 4.dp),
+                                textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                            )
+                            
+                            Spacer(modifier = Modifier.height(24.dp))
+                            Text(
+                                text = "QUICK VOICE SHORTCUTS",
+                                color = Color.White.copy(alpha = 0.35f),
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 11.sp,
+                                modifier = Modifier.align(Alignment.Start)
+                            )
+                            Spacer(modifier = Modifier.height(8.dp))
+                            
+                            // Shortcut words
+                            val shortcuts = listOf("Sports", "FIFA World Cup", "Bangla", "News", "Movies")
+                            LazyRow(
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                modifier = Modifier.fillMaxWidth(),
+                                contentPadding = PaddingValues(vertical = 4.dp)
+                            ) {
+                                items(shortcuts) { phrase ->
+                                    AssistChip(
+                                        onClick = {
+                                            viewModel.updateSearchQuery(phrase)
+                                            viewModel.setVoiceSearching(false)
+                                        },
+                                        label = { Text(phrase) },
+                                        colors = AssistChipDefaults.assistChipColors(
+                                            labelColor = Color.White,
+                                            containerColor = Color.White.copy(alpha = 0.05f)
+                                        ),
+                                        border = androidx.compose.foundation.BorderStroke(
+                                            1.dp, Color.White.copy(alpha = 0.1f)
+                                        )
+                                    )
+                                }
+                            }
+                        }
+                    },
+                    confirmButton = {},
+                    dismissButton = {},
+                    containerColor = Color(0xFF0E0C22),
+                    shape = RoundedCornerShape(24.dp)
+                )
+            }
         }
     }
 }
@@ -352,28 +481,36 @@ fun ChannelGridCard(
     onToggleFavorite: () -> Unit,
     onDownload: () -> Unit
 ) {
+    val scale by animateFloatAsState(
+        targetValue = if (isPlaying) 1.04f else 1.0f,
+        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMedium),
+        label = "scale"
+    )
+
     Card(
-        shape = RoundedCornerShape(16.dp),
+        shape = RoundedCornerShape(18.dp),
         colors = CardDefaults.cardColors(
-            containerColor = if (isPlaying) MaterialTheme.colorScheme.primary.copy(alpha = 0.12f) else Color.White.copy(alpha = 0.04f)
+            containerColor = if (isPlaying) MaterialTheme.colorScheme.primary.copy(alpha = 0.15f) else Color.White.copy(alpha = 0.04f)
         ),
         border = androidx.compose.foundation.BorderStroke(
-            1.dp,
-            if (isPlaying) MaterialTheme.colorScheme.primary.copy(alpha = 0.7f) else Color.White.copy(alpha = 0.08f)
+            1.2.dp,
+            if (isPlaying) MaterialTheme.colorScheme.primary else Color.White.copy(alpha = 0.06f)
         ),
         modifier = Modifier
             .fillMaxWidth()
+            .graphicsLayer(scaleX = scale, scaleY = scale)
             .clickable { onSelect() }
             .testTag("channel_grid_${channel.name}")
     ) {
-        Column(modifier = Modifier.padding(10.dp)) {
-            // Image/Logo area
+        Column(modifier = Modifier.padding(12.dp)) {
+            // Image/Logo area with a beautiful dark glass finish
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(84.dp)
-                    .clip(RoundedCornerShape(10.dp))
-                    .background(Color.Black.copy(alpha = 0.25f)),
+                    .height(90.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(Color(0xFF070B11).copy(alpha = 0.7f))
+                    .border(1.dp, Color.White.copy(alpha = 0.03f), RoundedCornerShape(12.dp)),
                 contentAlignment = Alignment.Center
             ) {
                 if (channel.logoUrl != null && channel.logoUrl.isNotEmpty()) {
@@ -383,14 +520,14 @@ fun ChannelGridCard(
                         contentScale = ContentScale.Fit,
                         modifier = Modifier
                             .fillMaxSize()
-                            .padding(8.dp)
+                            .padding(10.dp)
                     )
                 } else {
                     Icon(
                         imageVector = if (channel.groupTitle == "FIFA World Cup 2026") Icons.Default.EmojiEvents else Icons.Default.Tv,
                         contentDescription = "Default TV",
                         tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(28.dp)
+                        modifier = Modifier.size(32.dp)
                     )
                 }
 
@@ -399,20 +536,21 @@ fun ChannelGridCard(
                         modifier = Modifier
                             .align(Alignment.TopEnd)
                             .padding(6.dp)
-                            .background(MaterialTheme.colorScheme.primary, RoundedCornerShape(4.dp))
-                            .padding(horizontal = 4.dp, vertical = 2.dp)
+                            .background(MaterialTheme.colorScheme.primary, RoundedCornerShape(6.dp))
+                            .padding(horizontal = 6.dp, vertical = 3.dp)
                     ) {
                         Text(
                             text = "PLAYING",
                             color = Color.Black,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 8.sp
+                            fontWeight = FontWeight.Black,
+                            fontSize = 8.sp,
+                            letterSpacing = 0.5.sp
                         )
                     }
                 }
             }
 
-            Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(10.dp))
 
             Text(
                 text = channel.name,
@@ -423,31 +561,31 @@ fun ChannelGridCard(
                 overflow = TextOverflow.Ellipsis
             )
 
-            Spacer(modifier = Modifier.height(2.dp))
+            Spacer(modifier = Modifier.height(3.dp))
 
             Text(
                 text = if (channel.groupTitle == "FIFA World Cup 2026") viewModel.getLocalizedString("world_cup") else channel.groupTitle ?: "Live TV",
-                color = Color.White.copy(alpha = 0.4f),
-                fontSize = 10.sp,
+                color = Color.White.copy(alpha = 0.5f),
+                fontSize = 11.sp,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
 
-            // Download progress bar
+            // Download progress bar with beautiful green gradient look
             if (channel.downloadProgress > 0f && channel.downloadProgress < 100f) {
-                Spacer(modifier = Modifier.height(6.dp))
+                Spacer(modifier = Modifier.height(8.dp))
                 LinearProgressIndicator(
                     progress = channel.downloadProgress / 100f,
                     color = MaterialTheme.colorScheme.secondary,
-                    trackColor = Color.DarkGray,
+                    trackColor = Color.DarkGray.copy(alpha = 0.5f),
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(3.dp)
+                        .height(4.dp)
                         .clip(RoundedCornerShape(100))
                 )
             }
 
-            Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(10.dp))
 
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -455,36 +593,40 @@ fun ChannelGridCard(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 // Actions (Favorite & Download)
-                Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                     IconButton(
                         onClick = onToggleFavorite,
-                        modifier = Modifier.size(28.dp)
+                        modifier = Modifier
+                            .size(32.dp)
+                            .background(Color.White.copy(alpha = 0.03f), CircleShape)
                     ) {
                         Icon(
                             imageVector = if (channel.isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
                             contentDescription = "Favorite",
                             tint = if (channel.isFavorite) MaterialTheme.colorScheme.primary else Color.Gray,
-                            modifier = Modifier.size(16.dp)
+                            modifier = Modifier.size(15.dp)
                         )
                     }
 
                     IconButton(
                         onClick = onDownload,
-                        modifier = Modifier.size(28.dp)
+                        modifier = Modifier
+                            .size(32.dp)
+                            .background(Color.White.copy(alpha = 0.03f), CircleShape)
                     ) {
                         Icon(
                             imageVector = if (channel.isDownloaded) Icons.Default.FileDownloadDone else Icons.Default.FileDownload,
                             contentDescription = "Download",
-                            tint = if (channel.isDownloaded) Color(0xFF4CAF50) else Color.Gray,
-                            modifier = Modifier.size(16.dp)
+                            tint = if (channel.isDownloaded) Color(0xFF00E676) else Color.Gray,
+                            modifier = Modifier.size(15.dp)
                         )
                     }
                 }
 
-                // Small Play Control Action
+                // Small Play Control Action with ripple touch tag
                 Box(
                     modifier = Modifier
-                        .size(26.dp)
+                        .size(30.dp)
                         .background(
                             if (isPlaying) MaterialTheme.colorScheme.primary else Color.White.copy(alpha = 0.08f),
                             CircleShape
@@ -496,7 +638,7 @@ fun ChannelGridCard(
                         imageVector = Icons.Default.PlayArrow,
                         contentDescription = "Play",
                         tint = if (isPlaying) Color.Black else Color.White,
-                        modifier = Modifier.size(14.dp)
+                        modifier = Modifier.size(16.dp)
                     )
                 }
             }

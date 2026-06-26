@@ -7,6 +7,9 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.graphics.Color as AndroidColor
+import android.net.nsd.NsdManager
+import android.net.nsd.NsdServiceInfo
+import android.net.wifi.WifiManager
 import android.os.Build
 import android.util.Log
 import androidx.core.app.NotificationCompat
@@ -24,6 +27,13 @@ import com.example.data.TvRepository
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+
+data class DiscoveredCastDevice(
+    val name: String,
+    val serviceType: String,
+    val ipAddress: String,
+    val port: Int
+)
 
 class TvViewModel(application: Application) : AndroidViewModel(application) {
     private val repository: TvRepository
@@ -52,6 +62,13 @@ class TvViewModel(application: Application) : AndroidViewModel(application) {
     // Input States
     private val _searchQuery = MutableStateFlow("")
     val searchQuery: StateFlow<String> = _searchQuery.asStateFlow()
+
+    private val _isVoiceSearching = MutableStateFlow(false)
+    val isVoiceSearching: StateFlow<Boolean> = _isVoiceSearching.asStateFlow()
+
+    fun setVoiceSearching(active: Boolean) {
+        _isVoiceSearching.value = active
+    }
 
     private val _selectedGroup = MutableStateFlow<String?>("All")
     val selectedGroup: StateFlow<String?> = _selectedGroup.asStateFlow()
@@ -99,6 +116,44 @@ class TvViewModel(application: Application) : AndroidViewModel(application) {
     private val _currentChannel = MutableStateFlow<Channel?>(null)
     val currentChannel: StateFlow<Channel?> = _currentChannel.asStateFlow()
 
+    // Watch History States
+    private val _watchHistory = MutableStateFlow<List<Channel>>(emptyList())
+    val watchHistory: StateFlow<List<Channel>> = _watchHistory.asStateFlow()
+
+    private val prefs = application.getSharedPreferences("watch_history_prefs", Context.MODE_PRIVATE)
+
+    private fun loadWatchHistory() {
+        val savedUrls = prefs.getStringSet("history_urls", emptySet()) ?: emptySet()
+        viewModelScope.launch {
+            allChannels.collectLatest { channels ->
+                if (channels.isNotEmpty()) {
+                    val historyList = savedUrls.mapNotNull { url ->
+                        channels.find { it.url == url }
+                    }.toMutableList()
+                    // Fallback to top 4 channels if history is empty, to look nice!
+                    if (historyList.isEmpty()) {
+                        historyList.addAll(channels.take(4))
+                    }
+                    _watchHistory.value = historyList
+                }
+            }
+        }
+    }
+
+    fun addToWatchHistory(channel: Channel) {
+        val currentList = _watchHistory.value.filter { it.url != channel.url }.toMutableList()
+        currentList.add(0, channel)
+        val cappedList = currentList.take(10)
+        _watchHistory.value = cappedList
+        
+        prefs.edit().putStringSet("history_urls", cappedList.map { it.url }.toSet()).apply()
+    }
+
+    fun clearWatchHistory() {
+        _watchHistory.value = emptyList()
+        prefs.edit().remove("history_urls").apply()
+    }
+
     private val _syncStatus = MutableStateFlow("Local Database Synced")
     val syncStatus: StateFlow<String> = _syncStatus.asStateFlow()
 
@@ -118,10 +173,140 @@ class TvViewModel(application: Application) : AndroidViewModel(application) {
     private val _isSearchingDevices = MutableStateFlow(false)
     val isSearchingDevices: StateFlow<Boolean> = _isSearchingDevices.asStateFlow()
 
+    private var multicastLock: WifiManager.MulticastLock? = null
+    private val discoveryListeners = mutableListOf<Pair<String, NsdManager.DiscoveryListener>>()
+
+    private val _discoveredDevices = MutableStateFlow<List<DiscoveredCastDevice>>(emptyList())
+    val discoveredDevices: StateFlow<List<DiscoveredCastDevice>> = _discoveredDevices.asStateFlow()
+
+    fun startDeviceScan() {
+        if (_isSearchingDevices.value) return
+        _isSearchingDevices.value = true
+        _discoveredDevices.value = emptyList()
+
+        try {
+            val wifiManager = getApplication<Application>().applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
+            if (multicastLock == null) {
+                multicastLock = wifiManager.createMulticastLock("MRBCastMulticastLock").apply {
+                    setReferenceCounted(false)
+                    acquire()
+                }
+            }
+        } catch (e: Exception) {
+            Log.e("TvViewModel", "Failed to acquire multicast lock: ${e.message}")
+        }
+
+        val nsdManager = getApplication<Application>().getSystemService(Context.NSD_SERVICE) as NsdManager
+        val serviceTypes = listOf("_googlecast._tcp", "_airplay._tcp", "_dlna._tcp")
+
+        discoveryListeners.clear()
+
+        for (serviceType in serviceTypes) {
+            val listener = object : NsdManager.DiscoveryListener {
+                override fun onStartDiscoveryFailed(serviceType: String, errorCode: Int) {
+                    Log.e("TvViewModel", "Discovery failed to start for $serviceType: error $errorCode")
+                    try {
+                        nsdManager.stopServiceDiscovery(this)
+                    } catch (e: Exception) {
+                        Log.e("TvViewModel", "Error stopping service discovery: ${e.message}")
+                    }
+                }
+
+                override fun onStopDiscoveryFailed(serviceType: String, errorCode: Int) {
+                    Log.e("TvViewModel", "Discovery failed to stop for $serviceType: error $errorCode")
+                }
+
+                override fun onDiscoveryStarted(regType: String) {
+                    Log.d("TvViewModel", "Service discovery started for $regType")
+                }
+
+                override fun onDiscoveryStopped(regType: String) {
+                    Log.d("TvViewModel", "Service discovery stopped for $regType")
+                }
+
+                override fun onServiceFound(serviceInfo: NsdServiceInfo) {
+                    Log.d("TvViewModel", "Service found: ${serviceInfo.serviceName} type: ${serviceInfo.serviceType}")
+                    try {
+                        nsdManager.resolveService(serviceInfo, object : NsdManager.ResolveListener {
+                            override fun onResolveFailed(serviceInfo: NsdServiceInfo, errorCode: Int) {
+                                Log.e("TvViewModel", "Resolve failed for ${serviceInfo.serviceName}: $errorCode")
+                            }
+
+                            override fun onServiceResolved(resolvedInfo: NsdServiceInfo) {
+                                val host = resolvedInfo.host?.hostAddress ?: ""
+                                val rawName = resolvedInfo.serviceName
+                                val cleanName = if (rawName.contains("@")) {
+                                    rawName.substringAfter("@")
+                                } else {
+                                    rawName
+                                }
+
+                                val device = DiscoveredCastDevice(
+                                    name = cleanName,
+                                    serviceType = resolvedInfo.serviceType,
+                                    ipAddress = host,
+                                    port = resolvedInfo.port
+                                )
+
+                                val currentList = _discoveredDevices.value
+                                if (currentList.none { it.ipAddress == device.ipAddress || it.name == device.name }) {
+                                    _discoveredDevices.value = currentList + device
+                                }
+                            }
+                        })
+                    } catch (e: Exception) {
+                        Log.e("TvViewModel", "Exception resolving service: ${e.message}")
+                    }
+                }
+
+                override fun onServiceLost(serviceInfo: NsdServiceInfo) {
+                    Log.d("TvViewModel", "Service lost: ${serviceInfo.serviceName}")
+                    val currentList = _discoveredDevices.value
+                    _discoveredDevices.value = currentList.filterNot { it.name == serviceInfo.serviceName }
+                }
+            }
+
+            try {
+                nsdManager.discoverServices(serviceType, NsdManager.PROTOCOL_DNS_SD, listener)
+                discoveryListeners.add(Pair(serviceType, listener))
+            } catch (e: Exception) {
+                Log.e("TvViewModel", "Exception starting discovery for $serviceType: ${e.message}")
+            }
+        }
+
+        // Search for 6 seconds, then stop the loading indicator, keeping device lists
+        viewModelScope.launch {
+            delay(6000)
+            _isSearchingDevices.value = false
+        }
+    }
+
+    fun stopDeviceScan() {
+        val nsdManager = getApplication<Application>().getSystemService(Context.NSD_SERVICE) as NsdManager
+        for (pair in discoveryListeners) {
+            try {
+                nsdManager.stopServiceDiscovery(pair.second)
+            } catch (e: Exception) {
+                Log.e("TvViewModel", "Exception stopping discovery for ${pair.first}: ${e.message}")
+            }
+        }
+        discoveryListeners.clear()
+
+        try {
+            multicastLock?.let {
+                if (it.isHeld) {
+                    it.release()
+                }
+            }
+            multicastLock = null
+        } catch (e: Exception) {
+            Log.e("TvViewModel", "Exception releasing multicast lock: ${e.message}")
+        }
+        _isSearchingDevices.value = false
+    }
+
     fun startCasting(deviceName: String) {
         viewModelScope.launch {
-            _isSearchingDevices.value = true
-            delay(1500) // Simulated connection scan delay
             _isSearchingDevices.value = false
             _isCasting.value = true
             _castedDevice.value = deviceName
@@ -161,6 +346,7 @@ class TvViewModel(application: Application) : AndroidViewModel(application) {
             repository.initializeDefaultDataIfEmpty()
             // Auto refresh from playlist URL on start
             refreshPlaylist()
+            loadWatchHistory()
         }
 
         createNotificationChannel()
@@ -248,6 +434,7 @@ class TvViewModel(application: Application) : AndroidViewModel(application) {
     fun selectChannel(channel: Channel) {
         _currentChannel.value = channel
         playChannel(channel)
+        addToWatchHistory(channel)
     }
 
     private fun playChannel(channel: Channel) {
@@ -338,6 +525,13 @@ class TvViewModel(application: Application) : AndroidViewModel(application) {
         } else {
             player.play()
         }
+    }
+
+    fun stopPlayback() {
+        player.stop()
+        player.clearMediaItems()
+        _currentChannel.value = null
+        _isPlaying.value = false
     }
 
     fun playNext() {
@@ -601,6 +795,7 @@ class TvViewModel(application: Application) : AndroidViewModel(application) {
 
     override fun onCleared() {
         super.onCleared()
+        stopDeviceScan()
         player.release()
     }
 }

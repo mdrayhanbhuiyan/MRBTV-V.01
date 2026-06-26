@@ -21,6 +21,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
@@ -175,113 +176,11 @@ fun FavoritesScreen(
                         .testTag("favorites_grid")
                 ) {
                     items(favoriteChannels, key = { it.url }) { channel ->
-                        Box(
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(16.dp))
-                                .background(Color.White.copy(alpha = 0.04f))
-                                .border(1.dp, Color.White.copy(alpha = 0.08f), RoundedCornerShape(16.dp))
-                                .clickable {
-                                    viewModel.selectChannel(channel)
-                                }
-                                .padding(12.dp)
-                        ) {
-                            Column {
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .height(90.dp)
-                                        .clip(RoundedCornerShape(10.dp))
-                                        .background(Color.Black.copy(alpha = 0.2f)),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    if (channel.logoUrl != null && channel.logoUrl.isNotEmpty()) {
-                                        AsyncImage(
-                                            model = channel.logoUrl,
-                                            contentDescription = channel.name,
-                                            contentScale = ContentScale.Fit,
-                                            modifier = Modifier
-                                                .fillMaxSize()
-                                                .padding(10.dp)
-                                        )
-                                    } else {
-                                        Icon(
-                                            imageVector = Icons.Default.LiveTv,
-                                            contentDescription = null,
-                                            tint = Color(0xFF00E676),
-                                            modifier = Modifier.size(28.dp)
-                                        )
-                                    }
-
-                                    // Remove Bookmark indicator button top right
-                                    Box(
-                                        modifier = Modifier
-                                            .align(Alignment.TopEnd)
-                                            .padding(4.dp)
-                                            .size(26.dp)
-                                            .background(Color.Black.copy(alpha = 0.6f), CircleShape)
-                                            .clickable { viewModel.toggleFavorite(channel) },
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Default.Close,
-                                            contentDescription = "Unfavorite",
-                                            tint = Color.Red,
-                                            modifier = Modifier.size(14.dp)
-                                        )
-                                    }
-                                }
-
-                                Spacer(modifier = Modifier.height(10.dp))
-
-                                Text(
-                                    text = channel.name,
-                                    color = Color.White,
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 14.sp,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-
-                                Text(
-                                    text = channel.groupTitle ?: "General Feed",
-                                    color = Color.White.copy(alpha = 0.5f),
-                                    fontSize = 11.sp,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-
-                                Spacer(modifier = Modifier.height(8.dp))
-
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Box(
-                                        modifier = Modifier
-                                            .background(
-                                                Color(0xFF00E676).copy(alpha = 0.12f),
-                                                RoundedCornerShape(4.dp)
-                                            )
-                                            .padding(horizontal = 6.dp, vertical = 2.dp)
-                                    ) {
-                                        Text(
-                                            text = "ONLINE",
-                                            color = Color(0xFF00E676),
-                                            fontSize = 9.sp,
-                                            fontWeight = FontWeight.Bold
-                                        )
-                                    }
-
-                                    Icon(
-                                        imageVector = Icons.Default.PlayArrow,
-                                        contentDescription = "Play",
-                                        tint = Color(0xFF00E676),
-                                        modifier = Modifier.size(18.dp)
-                                    )
-                                }
-                            }
-                        }
+                        FavoriteChannelGridCard(
+                            channel = channel,
+                            onSelect = { viewModel.selectChannel(channel) },
+                            onUnfavorite = { viewModel.toggleFavorite(channel) }
+                        )
                     }
                 }
             }
@@ -340,5 +239,130 @@ fun FavoritesScreen(
             shape = RoundedCornerShape(20.dp),
             modifier = Modifier.border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(20.dp))
         )
+    }
+}
+
+@Composable
+fun FavoriteChannelGridCard(
+    channel: Channel,
+    onSelect: () -> Unit,
+    onUnfavorite: () -> Unit
+) {
+    var isPressed by remember { mutableStateOf(false) }
+    val scale by animateFloatAsState(
+        targetValue = if (isPressed) 0.95f else 1.0f,
+        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMedium),
+        label = "scale"
+    )
+
+    Box(
+        modifier = Modifier
+            .graphicsLayer(scaleX = scale, scaleY = scale)
+            .clip(RoundedCornerShape(18.dp))
+            .background(Color.White.copy(alpha = 0.04f))
+            .border(1.dp, Color.White.copy(alpha = 0.06f), RoundedCornerShape(18.dp))
+            .clickable {
+                onSelect()
+            }
+            .padding(12.dp)
+    ) {
+        Column {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(95.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(Color(0xFF070B11).copy(alpha = 0.7f))
+                    .border(1.dp, Color.White.copy(alpha = 0.03f), RoundedCornerShape(12.dp)),
+                contentAlignment = Alignment.Center
+            ) {
+                if (channel.logoUrl != null && channel.logoUrl.isNotEmpty()) {
+                    AsyncImage(
+                        model = channel.logoUrl,
+                        contentDescription = channel.name,
+                        contentScale = ContentScale.Fit,
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(10.dp)
+                    )
+                } else {
+                    Icon(
+                        imageVector = Icons.Default.LiveTv,
+                        contentDescription = null,
+                        tint = Color(0xFF00E676),
+                        modifier = Modifier.size(32.dp)
+                    )
+                }
+
+                // Remove Bookmark indicator button top right
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(6.dp)
+                        .size(28.dp)
+                        .background(Color.Black.copy(alpha = 0.7f), CircleShape)
+                        .clickable { onUnfavorite() },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Close,
+                        contentDescription = "Unfavorite",
+                        tint = Color.Red,
+                        modifier = Modifier.size(14.dp)
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            Text(
+                text = channel.name,
+                color = Color.White,
+                fontWeight = FontWeight.Bold,
+                fontSize = 14.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+
+            Text(
+                text = channel.groupTitle ?: "General Feed",
+                color = Color.White.copy(alpha = 0.5f),
+                fontSize = 11.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Box(
+                    modifier = Modifier
+                        .background(
+                            Color(0xFF00E676).copy(alpha = 0.12f),
+                            RoundedCornerShape(6.dp)
+                        )
+                        .padding(horizontal = 8.dp, vertical = 3.dp)
+                ) {
+                    Text(
+                        text = "ONLINE",
+                        color = Color(0xFF00E676),
+                        fontSize = 9.sp,
+                        fontWeight = FontWeight.Black,
+                        letterSpacing = 0.5.sp
+                    )
+                }
+
+                Icon(
+                    imageVector = Icons.Default.PlayArrow,
+                    contentDescription = "Play",
+                    tint = Color(0xFF00E676),
+                    modifier = Modifier.size(20.dp)
+                )
+            }
+        }
     }
 }

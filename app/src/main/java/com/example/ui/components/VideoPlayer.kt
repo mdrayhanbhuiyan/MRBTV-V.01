@@ -60,7 +60,16 @@ fun VideoPlayer(
     val isCasting by viewModel.isCasting.collectAsState()
     val castedDevice by viewModel.castedDevice.collectAsState()
     val isSearchingDevices by viewModel.isSearchingDevices.collectAsState()
+    val discoveredDevices by viewModel.discoveredDevices.collectAsState()
     var showCastDialog by remember { mutableStateOf(false) }
+
+    LaunchedEffect(showCastDialog) {
+        if (showCastDialog) {
+            viewModel.startDeviceScan()
+        } else {
+            viewModel.stopDeviceScan()
+        }
+    }
 
     val animatedGlowColor by animateColorAsState(
         targetValue = Color(ambientColorInt),
@@ -669,76 +678,126 @@ fun VideoPlayer(
                         modifier = Modifier.fillMaxWidth(),
                         verticalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
-                        if (isSearchingDevices) {
-                            Column(
+                        Text(
+                            text = "Discovering Chromecast, Apple TV, AirPlay & Smart TVs on your local Wi-Fi network.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
+                            modifier = Modifier.padding(bottom = 4.dp)
+                        )
+
+                        if (isSearchingDevices && discoveredDevices.isEmpty()) {
+                            Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .padding(vertical = 16.dp),
-                                horizontalAlignment = Alignment.CenterHorizontally
+                                    .padding(vertical = 12.dp)
+                                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.05f), RoundedCornerShape(8.dp))
+                                    .padding(12.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(12.dp)
                             ) {
                                 CircularProgressIndicator(
                                     color = MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier.size(36.dp)
+                                    modifier = Modifier.size(20.dp),
+                                    strokeWidth = 2.dp
                                 )
-                                Spacer(modifier = Modifier.height(12.dp))
                                 Text(
                                     text = viewModel.getLocalizedString("searching_cast"),
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.primary,
+                                    fontWeight = FontWeight.Medium
                                 )
                             }
-                        } else {
+                        }
+
+                        // Real Discovered Devices Section
+                        if (discoveredDevices.isNotEmpty()) {
                             Text(
-                                text = "Select a wireless receiver to direct stream to your TV / AirPlay system:",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
-                                modifier = Modifier.padding(bottom = 6.dp)
+                                text = "Discovered on same Wi-Fi (${discoveredDevices.size})",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = Color(0xFF00E676),
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(top = 4.dp, bottom = 2.dp)
                             )
 
-                            // Target Chromecast
-                            CastDeviceItemRow(
-                                name = "Living Room Chromecast Ultra",
-                                icon = Icons.Default.Tv,
-                                isConnected = isCasting && castedDevice == "Living Room Chromecast Ultra",
-                                onClick = {
-                                    viewModel.startCasting("Living Room Chromecast Ultra")
-                                    showCastDialog = false
+                            discoveredDevices.forEach { device ->
+                                val deviceIcon = when {
+                                    device.serviceType.contains("googlecast", ignoreCase = true) -> Icons.Default.Cast
+                                    device.serviceType.contains("airplay", ignoreCase = true) -> Icons.Default.CastConnected
+                                    else -> Icons.Default.Tv
                                 }
-                            )
 
-                            // Target Apple TV (AirPlay)
-                            CastDeviceItemRow(
-                                name = "Master Bedroom Apple TV",
-                                icon = Icons.Default.CastConnected,
-                                isConnected = isCasting && castedDevice == "Master Bedroom Apple TV",
-                                onClick = {
-                                    viewModel.startCasting("Master Bedroom Apple TV")
-                                    showCastDialog = false
-                                }
-                            )
+                                CastDeviceItemRow(
+                                    name = device.name,
+                                    icon = deviceIcon,
+                                    isConnected = isCasting && castedDevice == device.name,
+                                    onClick = {
+                                        viewModel.startCasting(device.name)
+                                        showCastDialog = false
+                                    }
+                                )
+                            }
 
-                            // Target Smart TV (AirCast)
-                            CastDeviceItemRow(
-                                name = "Samsung 4K QLED Smart TV",
-                                icon = Icons.Default.Tv,
-                                isConnected = isCasting && castedDevice == "Samsung 4K QLED Smart TV",
-                                onClick = {
-                                    viewModel.startCasting("Samsung 4K QLED Smart TV")
-                                    showCastDialog = false
-                                }
-                            )
-
-                            // Target Google Nest Hub
-                            CastDeviceItemRow(
-                                name = "Kitchen Google Nest Hub Max",
-                                icon = Icons.Default.Router,
-                                isConnected = isCasting && castedDevice == "Kitchen Google Nest Hub Max",
-                                onClick = {
-                                    viewModel.startCasting("Kitchen Google Nest Hub Max")
-                                    showCastDialog = false
-                                }
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(1.dp)
+                                    .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.1f))
+                                    .padding(vertical = 4.dp)
                             )
                         }
+
+                        // Fallback/Testing Receivers Section
+                        Text(
+                            text = "Manual / Simulation Receivers",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(top = 2.dp, bottom = 2.dp)
+                        )
+
+                        // Target Chromecast
+                        CastDeviceItemRow(
+                            name = "Living Room Chromecast Ultra",
+                            icon = Icons.Default.Tv,
+                            isConnected = isCasting && castedDevice == "Living Room Chromecast Ultra",
+                            onClick = {
+                                viewModel.startCasting("Living Room Chromecast Ultra")
+                                showCastDialog = false
+                            }
+                        )
+
+                        // Target Apple TV (AirPlay)
+                        CastDeviceItemRow(
+                            name = "Master Bedroom Apple TV",
+                            icon = Icons.Default.CastConnected,
+                            isConnected = isCasting && castedDevice == "Master Bedroom Apple TV",
+                            onClick = {
+                                viewModel.startCasting("Master Bedroom Apple TV")
+                                showCastDialog = false
+                            }
+                        )
+
+                        // Target Smart TV (AirCast)
+                        CastDeviceItemRow(
+                            name = "Samsung 4K QLED Smart TV",
+                            icon = Icons.Default.Tv,
+                            isConnected = isCasting && castedDevice == "Samsung 4K QLED Smart TV",
+                            onClick = {
+                                viewModel.startCasting("Samsung 4K QLED Smart TV")
+                                showCastDialog = false
+                            }
+                        )
+
+                        // Target Google Nest Hub
+                        CastDeviceItemRow(
+                            name = "Kitchen Google Nest Hub Max",
+                            icon = Icons.Default.Router,
+                            isConnected = isCasting && castedDevice == "Kitchen Google Nest Hub Max",
+                            onClick = {
+                                viewModel.startCasting("Kitchen Google Nest Hub Max")
+                                showCastDialog = false
+                            }
+                        )
                     }
                 },
                 confirmButton = {

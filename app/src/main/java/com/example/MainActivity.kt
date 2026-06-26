@@ -10,6 +10,9 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
@@ -26,6 +29,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -202,132 +207,186 @@ class MainActivity : ComponentActivity() {
                             bottomBar = {
                                 // Completely hide bottom navigation in fullscreen mode for immersive video
                                 if (!isFullScreen) {
-                                    Column {
-                                        // Custom Glassmorphic Premium Bottom Navigation bar
-                                        Surface(
-                                            color = Color(0xEB060A13), // Deep slate translucent dark base
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .background(Color.Transparent)
+                                            .windowInsetsPadding(WindowInsets.navigationBars)
+                                            .padding(horizontal = 16.dp, vertical = 12.dp)
+                                            .testTag("app_navigation_bar")
+                                    ) {
+                                        // Floating Glass Capsule with double-layer background
+                                        Box(
                                             modifier = Modifier
                                                 .fillMaxWidth()
+                                                .height(68.dp)
+                                                .clip(RoundedCornerShape(34.dp))
+                                                .background(Color(0xE5070B12)) // Deep obsidian-glass translucency
                                                 .border(
-                                                    width = 1.dp,
+                                                    width = 1.2.dp,
                                                     brush = androidx.compose.ui.graphics.Brush.verticalGradient(
-                                                        colors = listOf(Color.White.copy(alpha = 0.08f), Color.Transparent)
+                                                        colors = listOf(
+                                                            Color.White.copy(alpha = 0.12f),
+                                                            Color.White.copy(alpha = 0.02f)
+                                                        )
                                                     ),
-                                                    shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp)
+                                                    shape = RoundedCornerShape(34.dp)
                                                 )
-                                                .clip(RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp))
-                                                .windowInsetsPadding(WindowInsets.navigationBars)
-                                                .testTag("app_navigation_bar")
                                         ) {
                                             Row(
-                                                modifier = Modifier
-                                                    .fillMaxWidth()
-                                                    .height(72.dp)
-                                                    .padding(horizontal = 8.dp),
-                                                horizontalArrangement = Arrangement.SpaceAround,
+                                                modifier = Modifier.fillMaxSize(),
+                                                horizontalArrangement = Arrangement.SpaceEvenly,
                                                 verticalAlignment = Alignment.CenterVertically
                                             ) {
-                                                // 1. Home Tab
+                                                // 1. Home
                                                 val isHome = currentTab == "Home"
+                                                val homeScale by animateFloatAsState(
+                                                    targetValue = if (isHome) 1.12f else 1.0f,
+                                                    animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMedium),
+                                                    label = "homeScale"
+                                                )
                                                 Column(
                                                     horizontalAlignment = Alignment.CenterHorizontally,
-                                                    verticalArrangement = Arrangement.Center,
                                                     modifier = Modifier
                                                         .weight(1f)
-                                                        .fillMaxHeight()
                                                         .clickable { currentTab = "Home" }
+                                                        .graphicsLayer(scaleX = homeScale, scaleY = homeScale)
                                                         .testTag("nav_home_tab")
                                                 ) {
                                                     Icon(
-                                                        imageVector = Icons.Default.Home,
+                                                        imageVector = if (isHome) Icons.Filled.Home else Icons.Default.Home,
                                                         contentDescription = "Home",
-                                                        tint = if (isHome) Color(0xFF00E676) else Color.White.copy(alpha = 0.5f),
-                                                        modifier = Modifier.size(24.dp)
+                                                        tint = if (isHome) Color(0xFF00E676) else Color.White.copy(alpha = 0.45f),
+                                                        modifier = Modifier.size(22.dp)
                                                     )
-                                                    Spacer(modifier = Modifier.height(4.dp))
+                                                    Spacer(modifier = Modifier.height(3.dp))
                                                     Text(
-                                                        text = "Home",
-                                                        color = if (isHome) Color(0xFF00E676) else Color.White.copy(alpha = 0.5f),
-                                                        fontWeight = if (isHome) FontWeight.Bold else FontWeight.Medium,
-                                                        fontSize = 11.sp
+                                                        text = "HOME",
+                                                        fontSize = 9.sp,
+                                                        fontWeight = FontWeight.Bold,
+                                                        letterSpacing = 0.5.sp,
+                                                        color = if (isHome) Color(0xFF00E676) else Color.White.copy(alpha = 0.45f)
                                                     )
                                                 }
 
-                                                // 2. Streams Tab
+                                                // 2. Streams (Live TV)
                                                 val isStreams = currentTab == "Streams"
+                                                val streamsScale by animateFloatAsState(
+                                                    targetValue = if (isStreams) 1.12f else 1.0f,
+                                                    animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMedium),
+                                                    label = "streamsScale"
+                                                )
                                                 Column(
                                                     horizontalAlignment = Alignment.CenterHorizontally,
-                                                    verticalArrangement = Arrangement.Center,
                                                     modifier = Modifier
                                                         .weight(1f)
-                                                        .fillMaxHeight()
                                                         .clickable { currentTab = "Streams" }
+                                                        .graphicsLayer(scaleX = streamsScale, scaleY = streamsScale)
                                                         .testTag("nav_streams_tab")
                                                 ) {
                                                     Icon(
-                                                        imageVector = Icons.Default.LiveTv,
+                                                        imageVector = if (isStreams) Icons.Filled.LiveTv else Icons.Default.LiveTv,
                                                         contentDescription = "Streams",
-                                                        tint = if (isStreams) Color(0xFF00E676) else Color.White.copy(alpha = 0.5f),
-                                                        modifier = Modifier.size(24.dp)
+                                                        tint = if (isStreams) Color(0xFF00E676) else Color.White.copy(alpha = 0.45f),
+                                                        modifier = Modifier.size(22.dp)
                                                     )
-                                                    Spacer(modifier = Modifier.height(4.dp))
+                                                    Spacer(modifier = Modifier.height(3.dp))
                                                     Text(
-                                                        text = "Streams",
-                                                        color = if (isStreams) Color(0xFF00E676) else Color.White.copy(alpha = 0.5f),
-                                                        fontWeight = if (isStreams) FontWeight.Bold else FontWeight.Medium,
-                                                        fontSize = 11.sp
+                                                        text = "LIVE TV",
+                                                        fontSize = 9.sp,
+                                                        fontWeight = FontWeight.Bold,
+                                                        letterSpacing = 0.5.sp,
+                                                        color = if (isStreams) Color(0xFF00E676) else Color.White.copy(alpha = 0.45f)
                                                     )
                                                 }
 
-                                                // 3. Favorites Tab
+                                                // 3. Center big floating green play button
+                                                Box(
+                                                    modifier = Modifier
+                                                        .size(64.dp)
+                                                        .offset(y = (-14).dp)
+                                                        .clip(CircleShape)
+                                                        .background(
+                                                            Brush.verticalGradient(
+                                                                colors = listOf(Color(0xFF00FF87), Color(0xFF00E676))
+                                                            )
+                                                        )
+                                                        .border(3.dp, Color(0xFF040608), CircleShape)
+                                                        .clickable {
+                                                            currentTab = "Streams"
+                                                            if (tvViewModel.allChannels.value.isNotEmpty()) {
+                                                                tvViewModel.selectChannel(tvViewModel.allChannels.value.first())
+                                                            }
+                                                        },
+                                                    contentAlignment = Alignment.Center
+                                                ) {
+                                                    Icon(
+                                                        imageVector = Icons.Default.PlayArrow,
+                                                        contentDescription = "Main Play",
+                                                        tint = Color.Black,
+                                                        modifier = Modifier.size(28.dp)
+                                                    )
+                                                }
+
+                                                // 4. Favorites
                                                 val isFavorites = currentTab == "Favorites"
+                                                val favoritesScale by animateFloatAsState(
+                                                    targetValue = if (isFavorites) 1.12f else 1.0f,
+                                                    animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMedium),
+                                                    label = "favoritesScale"
+                                                )
                                                 Column(
                                                     horizontalAlignment = Alignment.CenterHorizontally,
-                                                    verticalArrangement = Arrangement.Center,
                                                     modifier = Modifier
                                                         .weight(1f)
-                                                        .fillMaxHeight()
                                                         .clickable { currentTab = "Favorites" }
+                                                        .graphicsLayer(scaleX = favoritesScale, scaleY = favoritesScale)
                                                         .testTag("nav_favorites_tab")
                                                 ) {
                                                     Icon(
-                                                        imageVector = Icons.Default.Favorite,
+                                                        imageVector = if (isFavorites) Icons.Filled.Favorite else Icons.Default.FavoriteBorder,
                                                         contentDescription = "Favorites",
-                                                        tint = if (isFavorites) Color(0xFF00E676) else Color.White.copy(alpha = 0.5f),
-                                                        modifier = Modifier.size(24.dp)
+                                                        tint = if (isFavorites) Color(0xFF00E676) else Color.White.copy(alpha = 0.45f),
+                                                        modifier = Modifier.size(22.dp)
                                                     )
-                                                    Spacer(modifier = Modifier.height(4.dp))
+                                                    Spacer(modifier = Modifier.height(3.dp))
                                                     Text(
-                                                        text = "Favorites",
-                                                        color = if (isFavorites) Color(0xFF00E676) else Color.White.copy(alpha = 0.5f),
-                                                        fontWeight = if (isFavorites) FontWeight.Bold else FontWeight.Medium,
-                                                        fontSize = 11.sp
+                                                        text = "FAVORITES",
+                                                        fontSize = 9.sp,
+                                                        fontWeight = FontWeight.Bold,
+                                                        letterSpacing = 0.5.sp,
+                                                        color = if (isFavorites) Color(0xFF00E676) else Color.White.copy(alpha = 0.45f)
                                                     )
                                                 }
 
-                                                // 4. Settings / Profile Tab
+                                                // 5. Settings / Profile
                                                 val isSettings = currentTab == "Settings"
+                                                val settingsScale by animateFloatAsState(
+                                                    targetValue = if (isSettings) 1.12f else 1.0f,
+                                                    animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMedium),
+                                                    label = "settingsScale"
+                                                )
                                                 Column(
                                                     horizontalAlignment = Alignment.CenterHorizontally,
-                                                    verticalArrangement = Arrangement.Center,
                                                     modifier = Modifier
                                                         .weight(1f)
-                                                        .fillMaxHeight()
                                                         .clickable { currentTab = "Settings" }
+                                                        .graphicsLayer(scaleX = settingsScale, scaleY = settingsScale)
                                                         .testTag("nav_settings_tab")
                                                 ) {
                                                     Icon(
-                                                        imageVector = Icons.Default.Person,
+                                                        imageVector = if (isSettings) Icons.Filled.Person else Icons.Default.Person,
                                                         contentDescription = "Profile",
-                                                        tint = if (isSettings) Color(0xFF00E676) else Color.White.copy(alpha = 0.5f),
-                                                        modifier = Modifier.size(24.dp)
+                                                        tint = if (isSettings) Color(0xFF00E676) else Color.White.copy(alpha = 0.45f),
+                                                        modifier = Modifier.size(22.dp)
                                                     )
-                                                    Spacer(modifier = Modifier.height(4.dp))
+                                                    Spacer(modifier = Modifier.height(3.dp))
                                                     Text(
-                                                        text = "Profile",
-                                                        color = if (isSettings) Color(0xFF00E676) else Color.White.copy(alpha = 0.5f),
-                                                        fontWeight = if (isSettings) FontWeight.Bold else FontWeight.Medium,
-                                                        fontSize = 11.sp
+                                                        text = "PROFILE",
+                                                        fontSize = 9.sp,
+                                                        fontWeight = FontWeight.Bold,
+                                                        letterSpacing = 0.5.sp,
+                                                        color = if (isSettings) Color(0xFF00E676) else Color.White.copy(alpha = 0.45f)
                                                     )
                                                 }
                                             }
